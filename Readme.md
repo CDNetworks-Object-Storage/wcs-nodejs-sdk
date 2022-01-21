@@ -1,118 +1,103 @@
 ## wcs-nodejs-sdk
 
-### 安装
-1. npm安装
-```
-npm install wcs-nodejs-sdk
-```
+## Prerequisites
+- Cloud Storage is activated.
+- The AccessKey and SecretKey are created
+- System: Above H5
 
-2. 手动安装
-从GitHub站点下载源码后，到根目录执行。
-```
-npm install
-```
-### 使用
-如使用npm安装，使用如下require指令
-```
-const wcs = require('wcs-nodejs-sdk');
+Notes:
+There is no token creation module in Wcs-JavaScript-SDK. For more security, we suggest that customer should set up a server for token calculation.
 
-let client = new wcs.wcsClient(config);
+## Install
+#### 1. Direct reference
 ```
-
-如使用手动安装，则require根目录下的index.js文件
+<script type="text/javascript" src="/dist/wcs.min.js"></script>
 ```
-const wcs = require('wcs-nodejs-sdk/index');
+Introduce the file via the ==script== tag, and it will generate an object called WCS globally.
 
-let client = new wcs.wcsClient(config)
+
+#### 2. Install npm
+```
+npm install wcs-js-sdk
 ```
 
-### 配置
-使用wcs-nodejs-sdk之前，您需要
-1. 拥有一对密钥，可在网宿云存储控制台查看
-2. 新建一个空间，可以网宿云存储控制台操作
+## Iniatialization
+- SDK controls upload behavior through a ***uploadObj*** object, which can trigger uploads, callbacks, stops, etc.
+- SDK determines whether to use direct upload or multipart upload according to the file size and block size ***BLOCK_SIZE***.    1) If the file size is greater than ***BLOCK_SIZE***: use multipart upload; 2) If the file size is smaller than or equal to ***BLOCK_SIZE***: Use direct upload
 
-执行完以上操作后，在您的项目中创建一个config文件，配置项及定义如下
-```
-var config = {
-    AccessKey: '<YOUR ACCESS KEY>',         // 上传凭证，可在您控制台安全管理-->密钥管理中查询
-    SecretKey: '<YOUR SECRET KEY>',         // 管理凭证，可在您控制台安全管理-->密钥管理中查询
-    UploadDomain: '<YOUR UPLOAD DOMAIN>',   // 上传域名（无需http前缀），可在您控制台安全管理-->域名查询中查询
-    MgrDomain: '<YOUR MGR DOOMAIN>',        // 管理域名（无需http前缀），可在您控制台安全管理-->域名查询中查询
-    BlockSize: <分片上传块大小>,             // 默认为4194304（4M，建议不修改），需大于4M且为4M的整数倍，需为int型整数
-    HttpTimeout: <http超时时间>,          // http超时时间，单位毫秒。默认120000（120秒），需为int型整数
-};
-
-module.exports = config;
 ```
 
-### 文件上传-普通上传
-普通上传在一次操作中将文件上传至网宿云存储，建议仅在文件小于20M时使用普通上传。
+import * as wangsu from 'wcs-js-sdk'
 
-#### 范例
-```
-const wcs = require('wcs-nodejs-sdk');
-const config = require('./config');
+Other introduce methods:
+1. import * as wangsu from 'wcs-js-sdk'           call wangsu.wcsUpload()
+2. import { wcsUpload } from 'wcs-js-sdk'         call wcsUpload()  
 
-let putPolicy = {
-    scope: bucket+':'+key,
-    deadline: '<deadline>',
-};
+var uploadObj = wangsu.wcsUpload(file, token, uploadUrl, extraConfig);
 
-let client = new wcs.wcsClient(config);
-var callback = function(err, data, res) {
-    console.log('callback');
-    if (err) {
-        console.log(err);
-    }
-    else {
-        console.log(res.statusCode);
-        console.log(wcs.utils.urlSafeBase64Decode(data));
-    }
+Parameters:
+file // The file need to be uploaded
+token // Token required by the backend server
+uploadUrl // Upload URL
+extraConfig={
+    timeout: 0, //Timeout, default value is 0, it will retry upload when timeout
+    concurrentRequestLimit:3, //Concurrency, default value is 3. Notes: The browsers have limitation in the request resources for the connection. For example, Chrome's request limitation is 6, so there will be a situation where if you write 10 concurrently, but only 6 are actually uploaded.
+    retryCount:0 //Retry upload, default value is 0.
 }
 
-// 普通上传
-let filePath = __dirname+'/test';
-client.uploadByPath(filePath, putPolicy, null, callback);
 ```
 
-### 文件上传-分片上传
-1. 当文件较大时，使用普通上传容易出现超时等上传异常。建议在文件大于20M时选择分片上传功能。
-2. 使用分片上传时可自定义分块大小，但配置的分块大小必须大于4M且为4M的整数倍。
-3. 使用分片上传时如指定文件保存上传记录，则上传中断后再次上传相同文件会启用断点续传功能。
-
-#### 范例
+### Upload
 ```
-const wcs = require('wcs-nodejs-sdk');
-const config = require('./config');
+uploadObj.putFile();
 
-let putPolicy = {
-    scope: bucket+':'+key,
-    deadline: '<deadline>',
-};
+```
 
-let client = new wcs.wcsClient(config);
-var callback = function(err, data, res) {
-    console.log('callback');
-    if (err) {
-        console.log(err);
-    }
-    else {
-        console.log(res.statusCode);
-        console.log(wcs.utils.urlSafeBase64Decode(data));
-    }
+### Callback the uploading status
+```
+uploadObj.uploadProgress = function (progress) {}
+- progress format
+{
+    total:{
+        loaded: ?, //Loaded size
+        size: ?,   //Total file size 
+        percent: ? //ratio
+    },
+    chunks:[     //Block info, it is in array format 
+        {loaded: ?, size: ?, percent: ?},
+        {loaded: ?, size: ?, percent: ?}
+    ]
 }
 
-// 分片上传进度回调
-var progressCallback = function(readLength, fileSize) {
-    console.log(readLength + '/' + fileSize + ' finished');
-}
-
-// 分片上传
-let filePath = __dirname+'/test20M';
-
-// 若不指定recordFile则不会启用断点续传功能
-let recordFile = __dirname+'/resume.record';
-client.resumeUploadByPath(filePath, putPolicy, {deadline:3, mimeType: 'application/text', progressCallback: progressCallback}, callback);
 ```
 
-更多范例参考**wcs-nodejs-sdk/demos**
+### Callback Errors
+```
+uploadObj.onError = function (error) {}
+- error format
+{
+    code: ?,  // Error code, please note that there isn't code in uploadObj.stop() and timeout retry
+    message: "",  //Error info
+    isRequestError: true //Is it a request error? That is, after normal upload, the server returns an error. This is a normal error, and there is no need to re-upload.
+}
+
+```
+
+### Finish Callback
+```
+uploadObj.onComplete = function(res){}
+- res format
+{
+    data: jsonObj/String   //The result returned by the server. Note: If the code string is returned directly, the JSON object is returned if the chunk size is exceeded and multipart uploads is used.
+}
+
+```
+
+### Stop
+```
+uploadObj.stop();
+
+
+```
+
+[Demo](https://github.com/CDNetworks-Object-Storage/wcs-js-sdk/tree/master/test/demo1)
